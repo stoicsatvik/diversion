@@ -10,15 +10,33 @@ def load(name):
     with (ROOT / "data" / name).open(newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
+def validate(segments, observations):
+    """Reject malformed records before computing rates."""
+    segment_ids = [s.get("segment_id", "").strip() for s in segments]
+    if any(not x for x in segment_ids) or len(segment_ids) != len(set(segment_ids)):
+        raise ValueError("Segment IDs must be nonempty and unique")
+    observation_ids = [o.get("observation_id", "").strip() for o in observations]
+    if any(not x for x in observation_ids) or len(observation_ids) != len(set(observation_ids)):
+        raise ValueError("Observation IDs must be nonempty and unique")
+    for o in observations:
+        if o.get("segment_id", "").strip() not in set(segment_ids):
+            raise ValueError("Observation references an unknown segment")
+        if not o.get("object_type", "").strip():
+            raise ValueError("Object type must be nonempty")
+    for segment in segments:
+        if segment.get("coverage_complete", "").strip().lower() == "yes":
+            try:
+                length = float(segment.get("length_km", ""))
+            except (ValueError, TypeError):
+                raise ValueError("Complete segments require positive length_km")
+            if not (0 < length < float("inf")):
+                raise ValueError("Complete segments require finite positive length_km")
+
+
 def main():
     segments = load("segments.csv")
     observations = load("observations.csv")
-    ids = [r["observation_id"] for r in observations]
-    if len(ids) != len(set(ids)) or any(not x for x in ids):
-        raise ValueError("Observation IDs must be nonempty and unique")
-    segment_ids = {s["segment_id"] for s in segments}
-    if any(o["segment_id"] not in segment_ids for o in observations):
-        raise ValueError("Observation references an unknown segment")
+    validate(segments, observations)
     print(f"Segments: {len(segments)}; unique recorded objects: {len(observations)}")
     for s in segments:
         sid = s["segment_id"]
