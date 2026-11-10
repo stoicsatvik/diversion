@@ -6,7 +6,7 @@ from scripts.analyze import validate
 class SurveyIntegrityTests(unittest.TestCase):
     def setUp(self):
         self.segments = [{"segment_id": "s1", "coverage_complete": "yes", "length_km": "2"}]
-        self.observations = [{"observation_id": "o1", "segment_id": "s1", "object_type": "sign"}]
+        self.observations = [{"observation_id": "o1", "segment_id": "s1", "object_type": "sign", "condition": ""}]
 
     def test_valid_survey(self):
         validate(self.segments, self.observations)
@@ -26,6 +26,13 @@ class SurveyIntegrityTests(unittest.TestCase):
     def test_missing_object_type(self):
         with self.assertRaisesRegex(ValueError, "Object type"):
             validate(self.segments, [dict(self.observations[0], object_type=" ")])
+
+    def test_missing_condition_field(self):
+        with self.assertRaisesRegex(ValueError, "condition field"):
+            validate(self.segments, [{k: v for k, v in self.observations[0].items() if k != "condition"}])
+
+    def test_blank_condition_is_unknown(self):
+        validate(self.segments, [dict(self.observations[0], condition="")])
 
     def test_unknown_segment(self):
         with self.assertRaisesRegex(ValueError, "unknown segment"):
