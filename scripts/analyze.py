@@ -23,6 +23,8 @@ def validate(segments, observations):
             raise ValueError("Observation references an unknown segment")
         if not o.get("object_type", "").strip():
             raise ValueError("Object type must be nonempty")
+        if "condition" not in o or o["condition"] is None:
+            raise ValueError("Observation condition field is required; blank means unknown")
     for segment in segments:
         if segment.get("coverage_complete", "").strip().lower() == "yes":
             try:
