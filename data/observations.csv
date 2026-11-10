@@ -1,1 +1,1 @@
-observation_id,segment_id,timestamp_local,latitude,longitude,road_direction,object_type,instruction,condition,visibility,video_timestamp_s,evidence_file,notes
+observation_id,physical_object_id,segment_id,timestamp_local,latitude,longitude,road_direction,object_type,instruction,condition,visibility,video_timestamp_s,evidence_file,notes
