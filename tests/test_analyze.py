@@ -1,12 +1,19 @@
 """Synthetic integrity checks; no field observations are invented."""
 import unittest
+
 from scripts.analyze import validate
 
 
 class SurveyIntegrityTests(unittest.TestCase):
     def setUp(self):
         self.segments = [{"segment_id": "s1", "coverage_complete": "yes", "length_km": "2"}]
-        self.observations = [{"observation_id": "o1", "segment_id": "s1", "object_type": "sign", "condition": ""}]
+        self.observations = [{
+            "observation_id": "o1",
+            "physical_object_id": "p1",
+            "segment_id": "s1",
+            "object_type": "sign",
+            "condition": "",
+        }]
 
     def test_valid_survey(self):
         validate(self.segments, self.observations)
@@ -19,17 +26,27 @@ class SurveyIntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Segment IDs"):
             validate([dict(self.segments[0], segment_id=" ")], [])
 
-    def test_duplicate_objects(self):
+    def test_duplicate_observation_ids(self):
         with self.assertRaisesRegex(ValueError, "Observation IDs"):
             validate(self.segments, self.observations * 2)
+
+    def test_blank_physical_object_id(self):
+        with self.assertRaisesRegex(ValueError, "Physical object IDs"):
+            validate(self.segments, [dict(self.observations[0], physical_object_id=" ")])
+
+    def test_same_physical_object_seen_in_multiple_images_must_not_be_counted_twice(self):
+        second_view = dict(self.observations[0], observation_id="o2", evidence_file="second-photo.jpg")
+        with self.assertRaisesRegex(ValueError, "Physical object IDs"):
+            validate(self.segments, [self.observations[0], second_view])
 
     def test_missing_object_type(self):
         with self.assertRaisesRegex(ValueError, "Object type"):
             validate(self.segments, [dict(self.observations[0], object_type=" ")])
 
     def test_missing_condition_field(self):
+        incomplete = {k: v for k, v in self.observations[0].items() if k != "condition"}
         with self.assertRaisesRegex(ValueError, "condition field"):
-            validate(self.segments, [{k: v for k, v in self.observations[0].items() if k != "condition"}])
+            validate(self.segments, [incomplete])
 
     def test_blank_condition_is_unknown(self):
         validate(self.segments, [dict(self.observations[0], condition="")])
