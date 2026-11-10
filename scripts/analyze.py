@@ -2,6 +2,8 @@
 """Conservative descriptive analysis of highway work-zone observations."""
 import csv
 from collections import Counter
+from datetime import datetime
+import math
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,8 +14,50 @@ def load(name):
         return list(csv.DictReader(f))
 
 
+def _optional_float(record, field, label):
+    raw = record.get(field, "")
+    text = "" if raw is None else str(raw).strip()
+    if not text:
+        return None
+    try:
+        value = float(text)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"{label} must be numeric") from exc
+    if not math.isfinite(value):
+        raise ValueError(f"{label} must be finite")
+    return value
+
+
+def _validate_coordinate_pair(record, latitude_field, longitude_field, label):
+    latitude_text = str(record.get(latitude_field, "") or "").strip()
+    longitude_text = str(record.get(longitude_field, "") or "").strip()
+    if bool(latitude_text) != bool(longitude_text):
+        raise ValueError(f"{label} latitude and longitude must be supplied together")
+    if not latitude_text:
+        return
+
+    latitude = _optional_float(record, latitude_field, f"{label} latitude")
+    longitude = _optional_float(record, longitude_field, f"{label} longitude")
+    if not -90 <= latitude <= 90:
+        raise ValueError(f"{label} latitude out of range")
+    if not -180 <= longitude <= 180:
+        raise ValueError(f"{label} longitude out of range")
+
+
+def _validate_timestamp(record, field):
+    raw = str(record.get(field, "") or "").strip()
+    if not raw:
+        return
+    if "T" not in raw and " " not in raw:
+        raise ValueError(f"{field} must be an ISO 8601 date-time")
+    try:
+        datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field} must be an ISO 8601 date-time") from exc
+
+
 def validate(segments, observations):
-    """Reject malformed records and repeated physical objects before rate estimates."""
+    """Reject malformed records before geospatial or rate calculations."""
     segment_ids = [s.get("segment_id", "").strip() for s in segments]
     if any(not x for x in segment_ids) or len(segment_ids) != len(set(segment_ids)):
         raise ValueError("Segment IDs must be nonempty and unique")
@@ -35,14 +79,27 @@ def validate(segments, observations):
         if "condition" not in observation or observation["condition"] is None:
             raise ValueError("Observation condition field is required; blank means unknown")
 
+        _validate_coordinate_pair(observation, "latitude", "longitude", "Observation")
+        _validate_timestamp(observation, "timestamp_local")
+        video_time = _optional_float(observation, "video_timestamp_s", "Video timestamp")
+        if video_time is not None and video_time < 0:
+            raise ValueError("Video timestamp must be non-negative")
+
     for segment in segments:
-        if segment.get("coverage_complete", "").strip().lower() == "yes":
-            try:
-                length = float(segment.get("length_km", ""))
-            except (ValueError, TypeError):
-                raise ValueError("Complete segments require positive length_km")
-            if not (0 < length < float("inf")):
-                raise ValueError("Complete segments require finite positive length_km")
+        complete = segment.get("coverage_complete", "").strip().lower() == "yes"
+        try:
+            length = _optional_float(segment, "length_km", "Segment length")
+        except ValueError as exc:
+            if complete:
+                raise ValueError("Complete segments require positive length_km") from exc
+            raise
+        if complete and (length is None or length <= 0):
+            raise ValueError("Complete segments require positive length_km")
+        if length is not None and length <= 0:
+            raise ValueError("Segment length must be positive")
+
+        _validate_coordinate_pair(segment, "start_lat", "start_lon", "Segment start")
+        _validate_coordinate_pair(segment, "end_lat", "end_lon", "Segment end")
 
 
 def main():
